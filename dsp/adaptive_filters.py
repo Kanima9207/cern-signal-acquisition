@@ -4,11 +4,7 @@ import numpy as np
 
 
 class LMSFilter:
-    """Normalized LMS adaptive noise-cancellation filter.
-
-    The desired input ``d`` is the noisy measurement and ``reference`` is a
-    correlated measurement of the unwanted interference.
-    """
+    """LMS adaptive noise-cancellation filter."""
 
     def __init__(self, order=32, learning_rate=0.01, normalized=False, epsilon=1e-8):
         if order < 1:
@@ -22,15 +18,10 @@ class LMSFilter:
         self.w = np.zeros(self.order, dtype=float)
 
     def reset(self):
-        """Reset filter coefficients to zero."""
         self.w.fill(0.0)
 
     def update(self, x, d):
-        """Process one sample and update coefficients.
-
-        Returns estimated interference, error (cleaned output), and a copy of
-        the current coefficient vector.
-        """
+        """Return estimated interference, cleaned output, and coefficients."""
         x = np.asarray(x, dtype=float)
         if x.shape != (self.order,):
             raise ValueError(f"x must have shape ({self.order},)")
@@ -43,12 +34,7 @@ class LMSFilter:
         return y, e, self.w.copy()
 
     def adapt(self, reference, desired):
-        """Run adaptive noise cancellation over complete signals.
-
-        ``desired`` is the measured signal (signal + interference), while
-        ``reference`` should be correlated with the interference but ideally
-        contain little of the desired signal.
-        """
+        """Run adaptive noise cancellation over complete 1-D signals."""
         reference = np.asarray(reference, dtype=float)
         desired = np.asarray(desired, dtype=float)
         if reference.ndim != 1 or desired.ndim != 1:
@@ -67,11 +53,22 @@ class LMSFilter:
 
 
 def mse(error, start=0):
-    """Return mean-square error, optionally after a warm-up interval."""
+    """Return mean-square value of an error/output signal."""
     error = np.asarray(error, dtype=float)
     if not 0 <= start < len(error):
         raise ValueError("start must be within the error array")
     return float(np.mean(error[start:] ** 2))
+
+
+def residual_mse(clean, estimate, start=0):
+    """Return MSE between the cleaned estimate and known clean signal."""
+    clean = np.asarray(clean, dtype=float)
+    estimate = np.asarray(estimate, dtype=float)
+    if clean.shape != estimate.shape:
+        raise ValueError("clean and estimate must have the same shape")
+    if not 0 <= start < len(clean):
+        raise ValueError("start must be within the signal arrays")
+    return float(np.mean((estimate[start:] - clean[start:]) ** 2))
 
 
 def snr_db(clean, estimate, start=0):
