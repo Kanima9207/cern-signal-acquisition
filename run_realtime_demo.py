@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from time import perf_counter
+
 import numpy as np
 
 from dsp.adaptive_filters import LMSFilter, residual_mse, snr_db
@@ -44,18 +46,20 @@ def main() -> None:
     lms = LMSFilter(order=ORDER, learning_rate=MU)
 
     chunk = int(FS * CHUNK_MS / 1000.0)
-    # Preserve the last ORDER-1 reference samples between chunks. Together
-    # with the persistent LMSFilter object, this makes adaptation stateful.
+    deadline_ms = CHUNK_MS
     reference_tail = np.zeros(ORDER - 1, dtype=float)
     frames = []
+    processing_times_ms = []
 
-    for start in range(0, raw.shape[1] - chunk + 1, chunk):
+    for chunk_index, start in enumerate(range(0, raw.shape[1] - chunk + 1, chunk), start=1):
         stop = start + chunk
+        tic = perf_counter()
+
         ref_chunk = reference[start:stop]
         desired_chunk = conditioned[1, start:stop]
-
         padded_ref = np.concatenate((reference_tail, ref_chunk))
         filtered_ch2 = np.empty_like(desired_chunk)
+
         for i, d_sample in enumerate(desired_chunk):
             x = padded_ref[i:i + ORDER][::-1]
             _, filtered_ch2[i], _ = lms.update(x, d_sample)
@@ -64,10 +68,36 @@ def main() -> None:
         filtered_chunk = conditioned[:, start:stop].copy()
         filtered_chunk[1] = filtered_ch2
         clean_chunk = clean[1, start:stop]
-
         frame_mse = residual_mse(clean_chunk, filtered_ch2)
         frame_snr = snr_db(clean_chunk, filtered_ch2)
+
+        elapsed_ms = (perf_counter() - tic) * 1000.0
+        processing_times_ms.append(elapsed_ms)
         frames.append((raw[:, start:stop], filtered_chunk, frame_snr, frame_mse))
+
+        utilization = 100.0 * elapsed_ms / deadline_ms
+        status = "OK" if elapsed_ms <= deadline_ms else "MISS"
+        print(
+            f"chunk {chunk_index:02d}: processing={elapsed_ms:7.3f} ms | "
+            f"budget={deadline_ms:.1f} ms | utilization={utilization:6.2f}% | {status}"
+        )
+
+    times = np.asarray(processing_times_ms)
+    worst_ms = float(np.max(times))
+    mean_ms = float(np.mean(times))
+    misses = int(np.sum(times > deadline_ms))
+    print("\nTiming summary")
+    print("-" * 60)
+    print(f"Chunk duration / deadline : {deadline_ms:.1f} ms")
+    print(f"Mean processing time      : {mean_ms:.3f} ms")
+    print(f"Worst processing time     : {worst_ms:.3f} ms")
+    print(f"Mean utilization          : {100.0 * mean_ms / deadline_ms:.2f}%")
+    print(f"Worst-case utilization    : {100.0 * worst_ms / deadline_ms:.2f}%")
+    print(f"Deadline misses           : {misses}/{len(times)}")
+    print(
+        "Timing result              : "
+        + ("PASS (all chunks within budget)" if misses == 0 else "FAIL (deadline miss detected)")
+    )
 
     DSPDashboard(
         DashboardConfig(
