@@ -84,15 +84,6 @@ python run_realtime_demo.py
 
 The demonstration processes simulated multi-channel data in 100 ms chunks, retains LMS state between chunks, measures SNR/residual MSE and processing time, and displays the channel waveforms and CH2 spectrum.
 
-## Development Roadmap
-
-- [x] Week 1 — Synthetic multi-channel signal generation
-- [x] Week 2 — Conditioning, quantization and decimation
-- [x] Week 3 — LMS adaptive filtering and learning-rate comparison
-- [x] Week 4 — Stateful chunk-wise processing, dashboard and timing benchmark
-- [ ] Week 5 — Final documentation, tests and portfolio packaging
-- [ ] Hardware validation — STM32/ADC acquisition when laboratory access is available
-
 ## Engineering Notes
 
 The current timing measurements are **real-time-paced software benchmarks**, not hard-real-time guarantees. They depend on the development PC, Python runtime and operating-system scheduling.
