@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from dsp.adaptive_filters import LMSFilter
-from dsp.signal_processor import SignalProcessor
+from dsp.adaptive_filters import LMSFilter, residual_mse, snr_db
+from dsp.signal_processor import ConditioningConfig, SignalProcessor
 from visualization.dsp_dashboard import DashboardConfig, DSPDashboard
 
 
@@ -18,7 +18,11 @@ ORDER = 32
 
 
 def make_dataset(fs: float, duration: float, channels: int) -> tuple[np.ndarray, np.ndarray]:
-    """Generate repeatable 8-channel detector-like signals and references."""
+    """Generate repeatable 8-channel detector-like signals and references.
+
+    Arrays use shape (channels, samples) for the dashboard and are transposed
+    when passed to SignalProcessor, whose DSP axis is the sample axis.
+    """
     rng = np.random.default_rng(42)
     t = np.arange(int(fs * duration)) / fs
     clean = np.zeros((channels, len(t)))
@@ -34,19 +38,22 @@ def make_dataset(fs: float, duration: float, channels: int) -> tuple[np.ndarray,
 
 def main() -> None:
     raw, clean = make_dataset(FS, DURATION, CHANNELS)
-    processor = SignalProcessor(fs=int(FS), num_channels=CHANNELS)
-    conditioned = processor.anti_aliasing_filter(raw, cutoff=4000.0)
+
+    config = ConditioningConfig(fs=FS, cutoff_hz=4000.0, filter_order=4)
+    processor = SignalProcessor(config)
+
+    # SignalProcessor operates along axis 0, so convert (channels, samples)
+    # to (samples, channels) and transpose the result back for the dashboard.
+    conditioned = processor.anti_aliasing_filter(raw.T).T
 
     # CH2 reference is correlated with its 10 kHz interference.
     t = np.arange(raw.shape[1]) / FS
     reference = np.sin(2 * np.pi * 10_000 * t)
     lms = LMSFilter(order=ORDER, learning_rate=MU)
-    _, filtered_ch2, _, _ = lms.adapt(reference, conditioned[1], return_history=True)
+    _, filtered_ch2, _ = lms.adapt(reference, conditioned[1])
 
-    # Preserve equal array lengths by padding the initial LMS transient.
     filtered_full = conditioned.copy()
-    pad = conditioned.shape[1] - len(filtered_ch2)
-    filtered_full[1] = np.pad(filtered_ch2, (pad, 0), mode="edge")
+    filtered_full[1] = filtered_ch2
 
     chunk = int(FS * CHUNK_MS / 1000)
     frames = []
@@ -54,12 +61,13 @@ def main() -> None:
         stop = start + chunk
         y = filtered_full[1, start:stop]
         s = clean[1, start:stop]
-        residual_mse = float(np.mean((y - s) ** 2))
-        signal_power = np.mean(s ** 2)
-        snr = 10 * np.log10(signal_power / max(residual_mse, 1e-15))
-        frames.append((raw[:, start:stop], filtered_full[:, start:stop], snr, residual_mse))
+        frame_mse = residual_mse(s, y)
+        frame_snr = snr_db(s, y)
+        frames.append((raw[:, start:stop], filtered_full[:, start:stop], frame_snr, frame_mse))
 
-    DSPDashboard(DashboardConfig(fs=FS, channels=CHANNELS, chunk_ms=CHUNK_MS)).show(frames)
+    DSPDashboard(
+        DashboardConfig(fs=FS, channels=CHANNELS, chunk_ms=CHUNK_MS)
+    ).show(frames)
 
 
 if __name__ == "__main__":
