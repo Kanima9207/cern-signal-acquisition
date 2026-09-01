@@ -18,15 +18,17 @@ A Butterworth response is maximally flat in the passband. For an Nth-order low-p
 
 At the cutoff frequency `fc`, the magnitude is approximately -3.01 dB. The project uses a fourth-order Butterworth filter with `fc = 4 kHz`. The measured software response is -3.03 dB at 4 kHz and -36.13 dB at 10 kHz.
 
+The offline validation implementation uses zero-phase `sosfiltfilt`. This is useful for characterizing the conditioning model but is non-causal and is not presented as a deployable real-time analog or embedded anti-aliasing implementation.
+
 ## 3. ADC quantization
 
-For an ideal B-bit ADC spanning `Vmax - Vmin`, the nominal least-significant-bit size is
+The implemented endpoint-inclusive quantizer uses
 
-`LSB = (Vmax - Vmin) / 2^B`.
+`LSB = (Vmax - Vmin) / (2^B - 1)`.
 
-For 16 bits and a ±10 V range, this gives approximately 0.30518 mV per code. Under the common ideal uniform-quantization-error model, the quantization-noise RMS is
+For 16 bits and a ±10 V range, this gives approximately 0.30518 mV per code. The commonly used ideal high-resolution quantization-noise approximation is
 
-`sigma_q = LSB / sqrt(12)`.
+`sigma_q ≈ LSB / sqrt(12)`.
 
 This predicts approximately 0.08810 mV RMS. The software experiment measured approximately 0.09032 mV RMS on CH2.
 
@@ -52,9 +54,9 @@ The Least Mean Squares algorithm updates an FIR coefficient vector using the ins
 
 `e[n] = d[n] - y[n]`
 
-`w[n+1] = w[n] + 2 mu e[n] x[n]`
+`w[n+1] = w[n] + mu e[n] x[n]`
 
-where `mu` is the learning rate (step size).
+where `mu` is the learning rate (step size). This is the convention implemented in `dsp/adaptive_filters.py`; some texts absorb a factor of two into the definition of the step size.
 
 In the adaptive-noise-cancellation arrangement, the LMS input is a reference correlated with the unwanted interference. The adaptive filter learns an estimate of that interference. Subtracting the estimate from the contaminated observation leaves the cleaned output.
 
@@ -86,7 +88,9 @@ For each block, software processing time is compared with the 100 ms acquisition
 
 The current PC benchmark measured 20.27 ms mean processing time, 24.23 ms worst-case processing time, and zero deadline misses over 20 chunks.
 
-This establishes that the Python implementation keeps pace with the chosen simulated acquisition interval on the tested computer. It does not establish hard-real-time behavior, which would require controlled scheduling, hardware-specific timing analysis and later embedded validation.
+The timed region covers the stateful LMS processing and associated per-chunk software metrics after the conditioning signal has been prepared. The conditioning stage used by this demonstration is currently computed offline with zero-phase filtering, so the result should not be interpreted as an end-to-end causal streaming benchmark.
+
+This establishes that the measured Python LMS stage keeps pace with the chosen simulated acquisition interval on the tested computer. It does not establish hard-real-time behavior, which would require controlled scheduling, hardware-specific timing analysis and later embedded validation.
 
 ## 9. Software-to-hardware validation strategy
 
