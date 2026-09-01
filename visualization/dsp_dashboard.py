@@ -40,6 +40,7 @@ class DSPDashboard:
         self.fft_line = None
         self.error_line = None
         self.snr_text = None
+        self.animation = None  # Keep a strong reference so Matplotlib does not garbage-collect it.
 
     def _setup(self) -> None:
         self.fig = plt.figure(figsize=(13, 9), constrained_layout=True)
@@ -114,5 +115,13 @@ class DSPDashboard:
             artists = self.wave_lines + self.filtered_lines + [self.fft_line, self.error_line, self.snr_text]
             return artists
 
-        FuncAnimation(self.fig, animate, frames=len(frames), interval=self.cfg.chunk_ms, blit=False, repeat=False)
+        # Keep the animation object alive for the lifetime of the figure.
+        self.animation = FuncAnimation(
+            self.fig,
+            animate,
+            frames=len(frames),
+            interval=self.cfg.chunk_ms,
+            blit=False,
+            repeat=False,
+        )
         plt.show()
