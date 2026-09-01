@@ -1,4 +1,4 @@
-"""Run the software-only real-time multi-channel DSP demonstration."""
+"""Run the software-only chunk-wise multi-channel DSP demonstration."""
 
 from __future__ import annotations
 
@@ -18,11 +18,7 @@ ORDER = 32
 
 
 def make_dataset(fs: float, duration: float, channels: int) -> tuple[np.ndarray, np.ndarray]:
-    """Generate repeatable 8-channel detector-like signals and references.
-
-    Arrays use shape (channels, samples) for the dashboard and are transposed
-    when passed to SignalProcessor, whose DSP axis is the sample axis.
-    """
+    """Generate repeatable detector-like signals with 10 kHz interference."""
     rng = np.random.default_rng(42)
     t = np.arange(int(fs * duration)) / fs
     clean = np.zeros((channels, len(t)))
@@ -41,32 +37,46 @@ def main() -> None:
 
     config = ConditioningConfig(fs=FS, cutoff_hz=4000.0, filter_order=4)
     processor = SignalProcessor(config)
-
-    # SignalProcessor operates along axis 0, so convert (channels, samples)
-    # to (samples, channels) and transpose the result back for the dashboard.
     conditioned = processor.anti_aliasing_filter(raw.T).T
 
-    # CH2 reference is correlated with its 10 kHz interference.
     t = np.arange(raw.shape[1]) / FS
     reference = np.sin(2 * np.pi * 10_000 * t)
     lms = LMSFilter(order=ORDER, learning_rate=MU)
-    _, filtered_ch2, _ = lms.adapt(reference, conditioned[1])
 
-    filtered_full = conditioned.copy()
-    filtered_full[1] = filtered_ch2
-
-    chunk = int(FS * CHUNK_MS / 1000)
+    chunk = int(FS * CHUNK_MS / 1000.0)
+    # Preserve the last ORDER-1 reference samples between chunks. Together
+    # with the persistent LMSFilter object, this makes adaptation stateful.
+    reference_tail = np.zeros(ORDER - 1, dtype=float)
     frames = []
+
     for start in range(0, raw.shape[1] - chunk + 1, chunk):
         stop = start + chunk
-        y = filtered_full[1, start:stop]
-        s = clean[1, start:stop]
-        frame_mse = residual_mse(s, y)
-        frame_snr = snr_db(s, y)
-        frames.append((raw[:, start:stop], filtered_full[:, start:stop], frame_snr, frame_mse))
+        ref_chunk = reference[start:stop]
+        desired_chunk = conditioned[1, start:stop]
+
+        padded_ref = np.concatenate((reference_tail, ref_chunk))
+        filtered_ch2 = np.empty_like(desired_chunk)
+        for i, d_sample in enumerate(desired_chunk):
+            x = padded_ref[i:i + ORDER][::-1]
+            _, filtered_ch2[i], _ = lms.update(x, d_sample)
+        reference_tail = padded_ref[-(ORDER - 1):].copy()
+
+        filtered_chunk = conditioned[:, start:stop].copy()
+        filtered_chunk[1] = filtered_ch2
+        clean_chunk = clean[1, start:stop]
+
+        frame_mse = residual_mse(clean_chunk, filtered_ch2)
+        frame_snr = snr_db(clean_chunk, filtered_ch2)
+        frames.append((raw[:, start:stop], filtered_chunk, frame_snr, frame_mse))
 
     DSPDashboard(
-        DashboardConfig(fs=FS, channels=CHANNELS, chunk_ms=CHUNK_MS)
+        DashboardConfig(
+            fs=FS,
+            channels=CHANNELS,
+            chunk_ms=CHUNK_MS,
+            history_seconds=0.02,
+            fft_size=4096,
+        )
     ).show(frames)
 
 
