@@ -1,95 +1,112 @@
 # Multi-Channel Digital Signal Acquisition & Adaptive Filtering
 
-A software-first signal-acquisition and DSP project that models an eight-channel detector-style readout chain, validates signal conditioning and adaptive LMS filtering, and provides a stateful real-time-paced visualization demo before hardware validation.
+Eight-channel signal-acquisition and DSP pipeline for ADC modelling, signal conditioning, decimation, adaptive interference cancellation, and real-time chunk processing.
 
 ## Highlights
 
 - **8-channel** synthetic acquisition at **50 kHz**
-- **4th-order Butterworth** conditioning filter with **4 kHz** cutoff
+- **4th-order Butterworth** low-pass conditioning with **4 kHz** cutoff
 - **16-bit ±10 V ADC** quantization model
-- LMS adaptive noise cancellation implemented **from first principles**
+- LMS adaptive interference cancellation implemented from first principles
 - CH2 SNR improved from **17.50 dB to 41.72 dB** at μ = 0.001
-- Measured LMS learning-rate/stability trade-off for μ = 0.001, 0.01 and 0.1
-- Stateful **100 ms chunk-wise** processing and live dashboard
-- **0/20 deadline misses** in the current PC timing benchmark; worst measured processing time **24.23 ms** for a 100 ms budget
+- Measured learning-rate/stability behaviour for μ = 0.001, 0.01 and 0.1
+- Stateful **100 ms chunk-wise** processing
+- **0/20 deadline misses** in the recorded PC timing benchmark; worst processing time **24.23 ms** against a 100 ms budget
 
-## Processing Architecture
+## Signal Chain
 
 ```text
-Synthetic signal source / future hardware ADC
-                    |
-                    v
-          Multi-channel acquisition
-                    |
-                    v
-       Anti-aliasing / conditioning
-                    |
-                    v
-        ADC quantization / samples
-                    |
-                    v
-       Stateful adaptive LMS stage
-                    |
-                    v
-       SNR / MSE / FFT / timing
-                    |
-                    v
-          Real-time-paced dashboard
+Synthetic multi-channel source
+          |
+          v
+Signal conditioning / low-pass filtering
+          |
+          v
+16-bit ADC quantization
+          |
+          v
+Decimation
+          |
+          v
+Stateful LMS interference cancellation
+          |
+          v
+SNR / MSE / FFT / timing analysis
+          |
+          v
+Real-time-paced visualization
 ```
 
-## Key Measured Software Results
+## Measured Software Results
 
 | Measurement | Result |
-| --- | ---: |
+|---|---:|
 | Baseline CH2 SNR | 17.50 dB |
 | Best LMS output SNR | **41.72 dB** |
 | Best SNR improvement | **+24.21 dB** |
 | Best tested LMS μ | **0.001** |
-| Residual MSE at μ=0.001 | **0.000076 V²** |
-| LMS convergence time at μ=0.001 | 4.68 ms |
+| Residual MSE at μ = 0.001 | **0.000076 V²** |
+| LMS convergence time at μ = 0.001 | 4.68 ms |
 | Butterworth gain @ 4 kHz | -3.03 dB |
 | Butterworth gain @ 10 kHz | -36.13 dB |
 | 16-bit ADC LSB (±10 V) | 0.30518 mV |
 | Simulated quantization RMS | 0.09032 mV |
+| Samples before / after decimation | 5000 / 2500 |
+| Effective sample rate after decimation | 25 kHz |
 | Mean 100 ms chunk processing time | 20.27 ms |
 | Worst measured chunk processing time | 24.23 ms |
 | Deadline misses | **0 / 20** |
 
-Full measurement definitions and interpretation are in [`docs/RESULTS.md`](docs/RESULTS.md).
+Detailed measurement definitions are documented in [`docs/RESULTS.md`](docs/RESULTS.md).
 
-## Repository Structure
+## LMS Step-Size Study
 
-```text
-cern-signal-acquisition/
-├── dsp/                  # Signal conditioning and adaptive-filter modules
-├── firmware/             # Reserved for future embedded acquisition code
-├── data/                 # Reproducible datasets / generated measurements
-├── notebooks/            # Signal generation, conditioning and LMS experiments
-├── visualization/        # Matplotlib acquisition dashboard
-├── docs/                 # Theory, architecture and measured results
-├── tests/                # Validation tests
-├── run_realtime_demo.py  # Stateful chunk-wise software demonstration
-├── requirements.txt
-└── README.md
-```
+| μ | Output SNR | ΔSNR | Residual MSE |
+|---:|---:|---:|---:|
+| 0.001 | **41.72 dB** | **+24.21 dB** | 0.000076 V² |
+| 0.010 | 21.07 dB | +3.57 dB | 0.008796 V² |
+| 0.100 | -10.30 dB | -27.80 dB | 12.053224 V² |
 
-## Run the Demo
+The sweep demonstrates the LMS convergence/stability trade-off: increasing the step size accelerates adaptation only within a stable operating range; an excessively large value causes poor cancellation and instability.
 
-Create/activate a Python virtual environment and install the project dependencies, then run:
+## Run Locally
 
 ```bash
+git clone https://github.com/Kanima9207/cern-signal-acquisition.git
+cd cern-signal-acquisition
+python -m venv .venv
 pip install -r requirements.txt
 python run_realtime_demo.py
 ```
 
-The demonstration processes simulated multi-channel data in 100 ms chunks, retains LMS state between chunks, measures SNR/residual MSE and processing time, and displays the channel waveforms and CH2 spectrum.
+The demo processes simulated eight-channel data in 100 ms chunks, preserves LMS state between chunks, reports SNR/residual MSE and processing time, and visualizes the channel waveforms and CH2 spectrum.
 
-## Engineering Notes
+## Repository Structure
 
-The current timing measurements are **real-time-paced software benchmarks**, not hard-real-time guarantees. They depend on the development PC, Python runtime and operating-system scheduling.
+```text
+dsp/                  Signal conditioning and adaptive-filter modules
+data/                 Reproducible datasets / generated measurements
+notebooks/            Signal-generation, conditioning and LMS experiments
+visualization/        Acquisition visualization
+docs/                 Theory, architecture and measured results
+tests/                Validation tests
+firmware/             Hardware-facing work reserved for later validation
+run_realtime_demo.py  Stateful chunk-wise demonstration
+requirements.txt
+```
 
-All numerical results reported here come from reproducible simulations or measured software execution. Hardware results will be documented separately after laboratory access is available; simulation results will not be presented as hardware measurements.
+## Validation Boundary
 
-## Relevance
+The timing results are real-time-paced **software measurements**, not hard-real-time guarantees. They depend on the development computer, Python runtime, and operating-system scheduling.
 
-The project exercises signal-chain concepts relevant to instrumentation and detector readout: sampling and Nyquist constraints, anti-aliasing, ADC quantization, spectral analysis, interference rejection, adaptive filtering, multi-channel processing, reproducible measurement and processing-time budgeting. The software-first architecture is intended to make later hardware validation a comparison against an already characterized reference pipeline rather than a first attempt at the DSP design.
+All numerical results reported here come from reproducible simulation or measured software execution. No physical ADC, embedded target, or detector hardware performance is claimed.
+
+## Engineering Scope
+
+The project covers sampling and Nyquist constraints, digital signal conditioning, ADC quantization, decimation, spectral analysis, adaptive interference rejection, multi-channel processing, reproducible measurement, and processing-time budgeting.
+
+The more extensive fault-tolerant DAQ/RTL work is maintained separately in [RADIANT-DAQ](https://github.com/Kanima9207/radiant-daq).
+
+## Author
+
+**Kanishka Malakar** — Instrumentation Engineering
