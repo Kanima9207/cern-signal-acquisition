@@ -2,6 +2,11 @@
 
 Eight-channel signal-acquisition and DSP pipeline for ADC modelling, signal conditioning, decimation, adaptive interference cancellation, and real-time chunk processing.
 
+### [Launch the live Multi-Channel DAQ & Adaptive Filtering Demo](https://cern-signal-acquisition-demo.streamlit.app/)
+
+Explore the project interactively in the deployed Streamlit demo.
+
+
 ## Highlights
 
 - **8-channel** synthetic acquisition at **50 kHz**
